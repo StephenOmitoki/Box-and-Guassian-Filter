@@ -1,0 +1,176 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Mar 25 11:10:11 2026
+@author: foyin
+"""
+
+import cv2
+import numpy as np              
+import matplotlib.pyplot as plt
+import sys                      
+
+# Path to the input image
+image_path = "C:/Users/foyin/Downloads/boy.jpg"
+
+# Read the image from disk
+img = cv2.imread(image_path)
+
+# Check if the image was loaded successfully
+if img is None:
+    print("Error: image not found.")
+    sys.exit()
+
+# Convert the image from BGR to grayscale
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+# Get image dimensions
+rows, cols = gray.shape
+
+# Create an empty 5x5 box filter kernel
+box_kernel = np.zeros((5, 5), dtype=np.float32)
+
+# Fill the kernel with equal weights
+# Each value is 1/25 so the total sum of the kernel is 1
+for i in range(5):
+    for j in range(5):
+        box_kernel[i, j] = 1.0 / 25.0
+
+# Apply box filtering using mirror-like border reflection
+box_filtered = cv2.filter2D(gray, -1, box_kernel, borderType=cv2.BORDER_REFLECT)
+
+# Apply Gaussian filtering with sigma = 1
+gauss_sigma1 = cv2.GaussianBlur(gray, (5, 5), 1, borderType=cv2.BORDER_REFLECT)
+
+# Apply Gaussian filtering with sigma = 2
+# Larger sigma means more blurring
+gauss_sigma2 = cv2.GaussianBlur(gray, (5, 5), 2, borderType=cv2.BORDER_REFLECT)
+
+# Create an empty segmented image
+segmented = np.zeros((rows, cols), dtype=np.uint8)
+
+# Divide grayscale intensities into 16 segments
+# Since gray levels are 0 to 255, each segment covers 16 values
+for i in range(rows):
+    for j in range(cols):
+        value = gray[i, j]
+        segment = value // 16
+        segmented[i, j] = segment
+
+# Define 16 RGB colors, one for each segment
+color_map = np.array([
+    [0, 0, 0],
+    [128, 0, 0],
+    [0, 128, 0],
+    [128, 128, 0],
+    [0, 0, 128],
+    [128, 0, 128],
+    [0, 128, 128],
+    [192, 192, 192],
+    [128, 128, 128],
+    [255, 0, 0],
+    [0, 255, 0],
+    [255, 255, 0],
+    [0, 0, 255],
+    [255, 0, 255],
+    [0, 255, 255],
+    [255, 255, 255]
+], dtype=np.uint8)
+
+# Create an empty color image for the segmented result
+segmented_color = np.zeros((rows, cols, 3), dtype=np.uint8)
+
+# Replace each segment label with its corresponding RGB color
+for i in range(rows):
+    for j in range(cols):
+        label = segmented[i, j]
+        segmented_color[i, j, 0] = color_map[label, 0]
+        segmented_color[i, j, 1] = color_map[label, 1]
+        segmented_color[i, j, 2] = color_map[label, 2]
+
+# Create histogram array for 256 possible gray levels
+hist = np.zeros(256, dtype=np.int32)
+
+# Count how many times each intensity appears in the grayscale image
+for i in range(rows):
+    for j in range(cols):
+        pixel_value = gray[i, j]
+        hist[pixel_value] = hist[pixel_value] + 1
+
+# Start by assuming intensity 0 has the highest frequency
+max_count = hist[0]
+roi_intensity = 0
+
+# Find the intensity with the highest number of pixels
+for k in range(1, 256):
+    if hist[k] > max_count:
+        max_count = hist[k]
+        roi_intensity = k
+
+# Define tolerance around the dominant intensity
+tolerance = 15
+
+# Create an empty binary mask
+mask = np.zeros((rows, cols), dtype=np.uint8)
+
+# Keep pixels close to the dominant intensity as white (255)
+# All other pixels become black (0)
+for i in range(rows):
+    for j in range(cols):
+        if gray[i, j] >= roi_intensity - tolerance and gray[i, j] <= roi_intensity + tolerance:
+            mask[i, j] = 255
+        else:
+            mask[i, j] = 0
+
+# Show images
+plt.figure(figsize=(15, 10))
+
+# Original image (convert BGR to RGB for correct display)
+plt.subplot(2, 3, 1)
+plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+plt.title("Original Image")
+plt.axis("off")
+
+# Grayscale version
+plt.subplot(2, 3, 2)
+plt.imshow(gray, cmap="gray")
+plt.title("Grayscale Image")
+plt.axis("off")
+
+# Box filtered result
+plt.subplot(2, 3, 3)
+plt.imshow(box_filtered, cmap="gray")
+plt.title("5x5 Box Filter")
+plt.axis("off")
+
+# Gaussian filtered result with sigma = 1
+plt.subplot(2, 3, 4)
+plt.imshow(gauss_sigma1, cmap="gray")
+plt.title("Gaussian Filter sigma=1")
+plt.axis("off")
+
+# Segmented image with 16 color levels
+plt.subplot(2, 3, 5)
+plt.imshow(segmented_color)
+plt.title("16-Segment Color Mapping")
+plt.axis("off")
+
+# ROI mask based on dominant intensity
+plt.subplot(2, 3, 6)
+plt.imshow(mask, cmap="gray")
+plt.title("ROI Mask")
+plt.axis("off")
+
+plt.tight_layout()
+plt.show()
+
+# Plot histogram of grayscale intensities
+plt.figure(figsize=(6, 4))
+plt.bar(range(256), hist)
+plt.title("Histogram of Grayscale Image")
+plt.xlabel("Intensity")
+plt.ylabel("Frequency")
+plt.show()
+
+# Print dominant intensity information
+print("ROI intensity with highest number of pixels =", roi_intensity)
+print("Number of pixels in ROI intensity =", max_count)
